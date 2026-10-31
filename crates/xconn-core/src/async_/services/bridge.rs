@@ -237,13 +237,19 @@ impl Inner {
         for session in sessions.into_values() {
             let _ = session.close().await;
         }
+        let registrations = std::mem::take(&mut *self.registrations.lock().await);
+        let subscription = self.subscription.lock().await.take();
+        // The router already removed these resources when the source left.
+        if !self.source.connected() {
+            return Ok(());
+        }
         let mut failure = None;
-        for id in self.registrations.lock().await.drain(..) {
+        for id in registrations {
             if let Err(error) = self.source.unregister(id).await {
                 failure.get_or_insert(error);
             }
         }
-        if let Some(subscription) = self.subscription.lock().await.take()
+        if let Some(subscription) = subscription
             && let Err(error) = subscription.unsubscribe().await
         {
             failure.get_or_insert(error);

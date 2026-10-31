@@ -14,6 +14,12 @@ is implied by local tests.
 
 ## Native SDK
 
+Native SDK `v0.1.5` is prepared for the shared attachment and stream-broker APIs.
+After the service branch merges, publish its SDK tag, then tag the Go module
+`bindings/go/v0.1.5`. Application dependency updates must wait for both releases.
+See the [connectivity runtime release order](connectivity-runtime.md#integration-findings-and-release-order).
+
+
 [`scripts/package-native.py`](../scripts/package-native.py) stages or archives
 headers, the shared or static Rust library, pkg-config metadata, checksums, and
 build provenance. Archives support native Linux/macOS builds, Windows amd64 GNU

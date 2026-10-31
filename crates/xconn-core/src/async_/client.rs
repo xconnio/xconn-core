@@ -8,9 +8,10 @@ use wampproto::authenticators::cryptosign::CryptoSignAuthenticator;
 use wampproto::authenticators::ticket::TicketAuthenticator;
 use wampproto::authenticators::wampcra::WAMPCRAAuthenticator;
 
+#[derive(Clone)]
 pub struct Client {
-    serializer: Box<dyn SerializerSpec>,
-    authenticator: Box<dyn ClientAuthenticator + Send + Sync>,
+    pub(crate) serializer: Box<dyn SerializerSpec>,
+    pub(crate) authenticator: Box<dyn ClientAuthenticator + Send + Sync>,
 }
 
 impl Client {
@@ -19,6 +20,22 @@ impl Client {
             serializer,
             authenticator,
         }
+    }
+
+    /// Run a backend until cancelled. Setup runs once after each connection and
+    /// uses the ordinary Session API to restore registrations/subscriptions.
+    /// Setup errors stop the backend; transport failures reconnect with backoff.
+    #[cfg(feature = "services")]
+    pub async fn serve<F, Fut>(&self, uri: &str, realm: &str, setup: F) -> Result<(), Error>
+    where
+        F: Fn(Session) -> Fut,
+        Fut: Future<Output = Result<(), Error>>,
+    {
+        super::services::backend::run(
+            || async { self.clone().connect(uri, realm).await.map(|session| (session, ())) },
+            |session, ()| setup(session),
+        )
+        .await
     }
 
     pub async fn connect(self, uri: &str, realm: &str) -> Result<Session, Error> {

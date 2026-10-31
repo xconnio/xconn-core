@@ -11,6 +11,8 @@ import (
 )
 
 type Router struct {
+	streamCallbacks *foreignCallbacks
+	streamCancel    context.CancelFunc
 	// Serialize realm ownership changes; never wait for callback shutdown under this lock.
 	policyMu  sync.Mutex
 	policies  map[string]*realmPolicy
@@ -118,6 +120,11 @@ func (r *Router) Close() {
 	}
 
 	callbacks := make(map[*foreignCallbacks]struct{})
+	if r.streamCallbacks != nil {
+		callbacks[r.streamCallbacks] = struct{}{}
+	}
+	stopStreams := r.streamCancel
+	r.streamCallbacks, r.streamCancel = nil, nil
 
 	for _, policy := range r.policies {
 		if policy.callbacks != nil {
@@ -131,6 +138,9 @@ func (r *Router) Close() {
 	r.mu.Unlock()
 	r.policyMu.Unlock()
 
+	if stopStreams != nil {
+		stopStreams()
+	}
 	for _, listener := range listeners {
 		_ = listener.Close()
 	}

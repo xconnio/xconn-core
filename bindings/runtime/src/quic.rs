@@ -76,6 +76,7 @@ impl rustls::client::danger::ServerCertVerifier for HostVerification {
 }
 
 pub(super) enum Resource {
+    Empty,
     Connection(Connection),
     Listener(Arc<Listener>),
     Stream {
@@ -90,6 +91,7 @@ pub(super) enum Resource {
 impl Resource {
     pub(super) fn close(&self) {
         match self {
+            Self::Empty => {}
             Self::Connection(connection) => connection.close(),
             Self::Listener(listener) => listener.close(),
             Self::Stream { closed, .. } => {
@@ -99,11 +101,39 @@ impl Resource {
     }
 }
 
-fn connection(handle: u64) -> Result<Connection> {
+pub(super) fn connection(handle: u64) -> Result<Connection> {
     match get_resource(handle)?.as_ref() {
         BridgeResource::Quic(Resource::Connection(connection)) => Ok(connection.clone()),
         _ => Err("expected QUIC connection".into()),
     }
+}
+
+// Forwarding consumes the handle so bytes stay in Rust. Concurrent I/O cannot
+// be transferred safely; close it and fail rather than racing a reader/writer.
+pub(super) fn take_stream(handle: u64) -> Result<BoxStream> {
+    let resource = get_resource(handle)?;
+    if !matches!(resource.as_ref(), BridgeResource::Quic(Resource::Stream { .. })) {
+        return Err("expected native stream".into());
+    }
+    drop(resource);
+    let resource = crate::resources::take_resource(handle)?;
+    let mut resource = Arc::try_unwrap(resource).map_err(|resource| {
+        resource.close();
+        "cannot transfer a stream with active I/O".to_string()
+    })?;
+    let BridgeResource::Quic(stream) = &mut resource else {
+        unreachable!();
+    };
+    let Resource::Stream {
+        read, write, closed, ..
+    } = std::mem::replace(stream, Resource::Empty)
+    else {
+        unreachable!();
+    };
+    if *closed.borrow() {
+        return Err("native stream is closed".into());
+    }
+    Ok(read.into_inner().unsplit(write.into_inner()))
 }
 
 pub(super) fn stream_output(stream: BoxStream, fields: HashMap<String, Value>) -> Output {

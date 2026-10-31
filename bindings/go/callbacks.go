@@ -52,9 +52,10 @@ func newForeignCallbacks(ctx context.Context, handler func(string, any) (any, er
 			}
 
 			method := stringField(event, "method")
-			if method == "peer_read" || method == "peer_write" || method == "peer_close" || method == "authorize" {
+			switch method {
+			case "peer_read", "peer_write", "peer_close", "authorize", "stream_route":
 				go respond()
-			} else {
+			default:
 				respond()
 			}
 

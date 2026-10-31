@@ -10,6 +10,8 @@ mod resources;
 mod router;
 mod services;
 #[cfg(feature = "quic")]
+mod stream_broker;
+#[cfg(feature = "quic")]
 mod tls;
 mod values;
 #[cfg(feature = "webtransport")]
@@ -73,6 +75,10 @@ async fn dispatch_fields(f: HashMap<String, Value>) -> Result<resources::Output>
         return quic::dispatch(&method, f).await;
     }
 
+    #[cfg(feature = "quic")]
+    if method.starts_with("service_stream_") {
+        return stream_broker::dispatch(&method, f).await;
+    }
     if method.starts_with("service_") {
         return services::dispatch(&method, f).await;
     }

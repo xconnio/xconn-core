@@ -3,8 +3,8 @@
 Reusable connectivity technology implemented in Rust, with language bindings.
 
 The workspace contains the sans-I/O WAMP engine and its Rust networking runtime.
-Optional services provide RPC bridging, endpoint discovery, and attachment
-supervision. Language bindings live under [`bindings`](bindings).
+Optional services provide managed backends, stream routing, RPC bridging and
+endpoint discovery. Language bindings live under [`bindings`](bindings).
 
 [From many implementations to XConn Core](CONSOLIDATION.md) describes the
 project’s origins and the work behind this consolidation.

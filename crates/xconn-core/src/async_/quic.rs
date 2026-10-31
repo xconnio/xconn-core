@@ -100,6 +100,44 @@ impl Connection {
     }
 }
 
+/// Run a backend over one QUIC connection per attempt. The handler restores RPC
+/// registrations and may accept raw streams. Returning an error stops the backend;
+/// return Ok on normal stream EOF. Cancelling this future closes the connection.
+#[cfg(feature = "services")]
+pub async fn run_backend<F, Fut>(
+    address: SocketAddr,
+    server_name: &str,
+    tls: quinn::ClientConfig,
+    realm: &str,
+    client: super::client::Client,
+    handler: F,
+) -> Result<(), Error>
+where
+    F: Fn(Session, Connection) -> Fut,
+    Fut: Future<Output = Result<(), Error>>,
+{
+    struct Owner(Connection);
+
+    impl Drop for Owner {
+        fn drop(&mut self) {
+            self.0.close();
+        }
+    }
+
+    super::services::backend::run(
+        || async {
+            let connection = Arc::new(Owner(Connection::connect(address, server_name, tls.clone()).await?));
+            let session = connection
+                .0
+                .open_session(realm, client.serializer.clone(), client.authenticator.clone())
+                .await?;
+            Ok((session, connection))
+        },
+        |session, connection| handler(session, connection.0.clone()),
+    )
+    .await
+}
+
 pub struct AuthenticatedConnection {
     pub connection: Connection,
     pub session: wampproto::types::SessionDetails,
@@ -200,9 +238,11 @@ impl Listener {
                             let Ok(connection) = connection.await else {
                                 return;
                             };
-                            let (authenticated, mut identity) = watch::channel(None);
+                            let (authenticated, mut identity) = watch::channel(None::<wampproto::types::SessionDetails>);
                             let accepted = Connection { connection: connection.clone(), _endpoint: endpoint };
                             let mut announced = false;
+                            #[cfg(feature = "services")]
+                            let mut _destination = None;
                             let mut streams = tokio::task::JoinSet::new();
 
                             loop {
@@ -211,7 +251,29 @@ impl Listener {
                                         if changed.is_err() { break; }
                                         let session = identity.borrow_and_update().clone();
                                         if let Some(session) = session {
-                                            if enabled.load(std::sync::atomic::Ordering::Acquire) {
+                                            #[cfg(feature = "services")]
+                                            let mut managed = false;
+                                            #[cfg(not(feature = "services"))]
+                                            let managed = false;
+                                            #[cfg(feature = "services")]
+                                            if let Some(routing) = router.stream_routing() {
+                                                managed = true;
+                                                let connection = accepted.clone();
+                                                _destination = match routing.register(session.clone(), Arc::new(move || {
+                                                    let connection = connection.clone();
+                                                    Box::pin(async move {
+                                                        let stream = connection.open_raw().await?;
+                                                        Ok(Box::new(stream) as super::rawsocket::BoxStream)
+                                                    })
+                                                })) {
+                                                    Ok(registration) => registration,
+                                                    Err(_) => {
+                                                        accepted.close();
+                                                        break;
+                                                    }
+                                                };
+                                            }
+                                            if !managed && enabled.load(std::sync::atomic::Ordering::Acquire) {
                                                 let event = AuthenticatedConnection { connection: accepted.clone(), session };
                                                 tokio::select! {
                                                     result = notifications.send(event) => {

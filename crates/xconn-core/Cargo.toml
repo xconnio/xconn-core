@@ -77,3 +77,8 @@ required-features = ["async"]
 [[example]]
 name = "discovery"
 required-features = ["services"]
+
+[[example]]
+name = "backend"
+required-features = ["services"]
+test = true

@@ -259,11 +259,40 @@ impl Listener {
                                 peers.push(connection.clone());
                             }
 
-                            let (authenticated, _) = watch::channel(None);
+                            let (authenticated, mut identity) = watch::channel(None::<wampproto::types::SessionDetails>);
+                            let mut announced = false;
+                            #[cfg(feature = "services")]
+                            let mut _destination = None;
                             let mut streams = tokio::task::JoinSet::new();
 
                             loop {
                                 tokio::select! {
+                                    changed = identity.changed(), if !announced => {
+                                        if changed.is_err() { break; }
+                                        if let Some(session) = identity.borrow_and_update().clone() {
+                                            announced = true;
+                                            #[cfg(not(feature = "services"))]
+                                            let _ = session;
+                                            #[cfg(feature = "services")]
+                                            if let Some(routing) = router.stream_routing() {
+                                                let target = connection.clone();
+                                                _destination = match routing.register(session, Arc::new(move || {
+                                                    let target = target.clone();
+                                                    Box::pin(async move {
+                                                        let (send, recv) = target.open_bi().await
+                                                            .map_err(|error| Error::new(error.to_string()))?;
+                                                        Ok(Box::new(Stream { send, recv }) as super::rawsocket::BoxStream)
+                                                    })
+                                                })) {
+                                                    Ok(registration) => registration,
+                                                    Err(_) => {
+                                                        connection.close(0, b"");
+                                                        break;
+                                                    }
+                                                };
+                                            }
+                                        }
+                                    }
                                     incoming = connection.accept_bi() => {
                                         let Ok((send, recv)) = incoming else { break };
                                         let router = router.clone();

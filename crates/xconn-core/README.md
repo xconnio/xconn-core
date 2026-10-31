@@ -48,7 +48,7 @@ invocations, and RPC results share the `Payload` parsing helpers.
 
 | Feature | Purpose |
 | --- | --- |
-| `services` | Generic RPC bridges, endpoint discovery, and attachment supervision |
+| `services` | Managed backends, stream routing, RPC bridges and endpoint discovery |
 | `crypto` | Re-export portable packet encryption as `xconn_core::crypto` |
 | `async` | Async client, router, WebSocket and RawSocket transports |
 | `sync` | Blocking client and router adapters; enabled by default with `async` |

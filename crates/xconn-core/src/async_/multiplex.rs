@@ -42,11 +42,16 @@ pub async fn serve_stream(
             .map_err(|_| Error::new("connection closed"))?
             .clone()
             .unwrap();
-        raw.send(AuthenticatedStream {
+        let incoming = AuthenticatedStream {
             stream: Box::new(stream),
             session: details,
-        })
-        .await
-        .map_err(|_| Error::new("raw stream receiver closed"))
+        };
+        #[cfg(feature = "services")]
+        if let Some(routing) = router.stream_routing() {
+            return routing.forward(incoming).await;
+        }
+        raw.send(incoming)
+            .await
+            .map_err(|_| Error::new("raw stream receiver closed"))
     }
 }

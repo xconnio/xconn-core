@@ -276,6 +276,8 @@ impl Realm {
 
 #[derive(Clone, Default)]
 pub struct Router {
+    #[cfg(all(feature = "services", any(feature = "quic", feature = "webtransport")))]
+    stream_routing: Arc<Mutex<Option<super::services::routing::StreamRouting>>>,
     keepalive: Option<(Duration, Duration)>,
     authentication_override: Option<AuthenticationFactory>,
     realms: Arc<Mutex<HashMap<String, Arc<Mutex<Realm>>>>>,
@@ -294,6 +296,23 @@ impl Router {
         }
         self.keepalive = Some((interval, timeout));
         Ok(self)
+    }
+
+    /// Configure stream routing before binding listeners. Ordinary WAMP routing
+    /// is unchanged. An authenticated connection's identity selects destinations.
+    #[cfg(all(feature = "services", any(feature = "quic", feature = "webtransport")))]
+    pub fn route_streams(&self, routing: super::services::routing::StreamRouting) -> Result<(), Error> {
+        let mut current = self.stream_routing.lock().unwrap();
+        if current.is_some() {
+            return Err(Error::new("stream routing is already configured"));
+        }
+        *current = Some(routing);
+        Ok(())
+    }
+
+    #[cfg(all(feature = "services", any(feature = "quic", feature = "webtransport")))]
+    pub(crate) fn stream_routing(&self) -> Option<super::services::routing::StreamRouting> {
+        self.stream_routing.lock().unwrap().clone()
     }
 
     pub fn new() -> Self {

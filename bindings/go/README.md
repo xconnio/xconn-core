@@ -221,7 +221,12 @@ remain system resources; this is not a hermetic cross-distribution build.
 
 ## Reusable services
 
-Generic `Session.Bridge`, `RunAttachment`, and `Session.Discovery` delegate to
+`Client.Serve` restores a backend’s RPC setup after disconnection;
+`RunQUICBackend` also owns its stream connection. Hubs configure
+`Router.RouteStreams` once before listening, supplying their identity, routing
+and authorization policies. The listeners handle registration and forwarding.
+
+Advanced `Session.Bridge`, `RunAttachment`, and `Session.Discovery` delegate to
 Rust services. Directory hosts use `Session.ServeDiscovery` with an explicit
 authorization callback. Portable packet encryption lives in the `crypto` subpackage.
 See [ownership and service contracts](../../docs/services.md). DeskConn orchestration
